@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "posthog-node": "^5.14.0"
+  }
+}
