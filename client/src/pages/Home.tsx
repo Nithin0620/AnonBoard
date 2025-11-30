@@ -42,19 +42,25 @@ const Home: React.FC = () => {
       comments: [],
     };
     
-    setPosts(prev => [optimisticPost, ...prev]);
+    const updatedPosts = [optimisticPost, ...posts];
+    setPosts(updatedPosts);
+    // Update cache immediately for persistence
+    localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
+    
     setIsCreateModalOpen(false);
     setNewPostContent('');
     
     try {
       // Process blockchain transaction in background
       await blockchainCreatePost(content);
-      // Reload posts to get correct data from blockchain
-      await loadPosts();
+      // Reload posts after a delay to get correct data from blockchain
+      setTimeout(() => loadPosts(), 2000);
     } catch (err) {
       console.error('Failed to create post:', err);
       // Revert optimistic update on error
-      setPosts(prev => prev.filter(p => p.id !== optimisticPost.id));
+      const revertedPosts = posts.filter(p => p.id !== optimisticPost.id);
+      setPosts(revertedPosts);
+      localStorage.setItem('anonboard_posts', JSON.stringify(revertedPosts));
     }
   };
 
@@ -70,17 +76,21 @@ const Home: React.FC = () => {
       timestamp: Math.floor(Date.now() / 1000),
     };
     
-    setPosts(prev => prev.map(post => 
+    const updatedPosts = posts.map(post => 
       post.id === postId 
         ? { ...post, comments: [...(post.comments || []), optimisticComment] }
         : post
-    ));
+    );
+    setPosts(updatedPosts);
+    // Update cache immediately
+    localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
     
     if (selectedPost?.id === postId) {
-      setSelectedPost(prev => prev ? {
-        ...prev,
-        comments: [...(prev.comments || []), optimisticComment]
-      } : null);
+      const updatedSelectedPost = {
+        ...selectedPost,
+        comments: [...(selectedPost.comments || []), optimisticComment]
+      };
+      setSelectedPost(updatedSelectedPost);
     }
     
     setNewCommentContent('');
@@ -88,22 +98,24 @@ const Home: React.FC = () => {
     try {
       // Process blockchain transaction in background
       await blockchainAddComment(postId, content);
-      // Reload posts to sync with blockchain
-      const updatedPosts = await getAllPosts();
-      setPosts(updatedPosts);
-      
-      const updatedPost = updatedPosts.find((p: Post) => p.id === postId);
-      if (updatedPost && selectedPost?.id === postId) {
-        setSelectedPost(updatedPost);
-      }
+      // Reload posts after a delay to sync with blockchain
+      setTimeout(async () => {
+        const freshPosts = await loadPosts();
+        const updatedPost = freshPosts.find((p: Post) => p.id === postId);
+        if (updatedPost && selectedPost?.id === postId) {
+          setSelectedPost(updatedPost);
+        }
+      }, 2000);
     } catch (err) {
       console.error('Failed to add comment:', err);
       // Revert optimistic update on error
-      setPosts(prev => prev.map(post => 
+      const revertedPosts = posts.map(post => 
         post.id === postId 
           ? { ...post, comments: post.comments?.filter(c => c.id !== optimisticComment.id) }
           : post
-      ));
+      );
+      setPosts(revertedPosts);
+      localStorage.setItem('anonboard_posts', JSON.stringify(revertedPosts));
     }
   };
 
@@ -111,48 +123,44 @@ const Home: React.FC = () => {
     if (!account) return;
     
     // Optimistic update: Toggle like immediately
-    setPosts(prev => prev.map(post => 
+    const updatedPosts = posts.map(post => 
       post.id === postId 
         ? { ...post, likes: post.likes + 1 } // Simplified - just increment
         : post
-    ));
+    );
+    setPosts(updatedPosts);
+    // Update cache immediately
+    localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
     
     try {
       // Process blockchain transaction in background
       await blockchainToggleLike(postId);
-      // Reload posts to get accurate like count
-      await loadPosts();
+      // Reload posts after a delay to get accurate like count
+      setTimeout(() => loadPosts(), 2000);
     } catch (err) {
       console.error('Failed to toggle like:', err);
       // Revert on error
-      setPosts(prev => prev.map(post => 
+      const revertedPosts = posts.map(post => 
         post.id === postId 
           ? { ...post, likes: Math.max(0, post.likes - 1) }
           : post
-      ));
+      );
+      setPosts(revertedPosts);
+      localStorage.setItem('anonboard_posts', JSON.stringify(revertedPosts));
     }
   };
 
   const loadPosts = async () => {
-    // Load from cache immediately for instant display
-    const cachedPosts = localStorage.getItem('anonboard_posts');
-    if (cachedPosts) {
-      try {
-        const parsed = JSON.parse(cachedPosts);
-        setPosts(parsed);
-      } catch (e) {
-        console.error('Failed to parse cached posts:', e);
-      }
-    }
-    
     setIsLoadingPosts(true);
     try {
       const fetchedPosts = await getAllPosts();
       setPosts(fetchedPosts);
       // Cache posts for next visit
       localStorage.setItem('anonboard_posts', JSON.stringify(fetchedPosts));
+      return fetchedPosts;
     } catch (err) {
       console.error('Failed to load posts:', err);
+      return [];
     } finally {
       setIsLoadingPosts(false);
     }
@@ -215,6 +223,16 @@ const Home: React.FC = () => {
       />
 
       <main className="container mx-auto px-4 py-8 max-w-2xl">
+        {/* Connect Wallet Banner */}
+        {!account && (
+          <div className="mb-6 p-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg text-white">
+            <h2 className="text-xl font-bold mb-2">Connect Your Web3 Wallet</h2>
+            <p className="text-blue-50">
+              Connect your wallet to view the latest anonymous posts and start sharing your thoughts with the community!
+            </p>
+          </div>
+        )}
+
         {/* Error Message */}
         {error && (
           <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400">
