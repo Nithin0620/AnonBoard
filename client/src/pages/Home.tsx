@@ -28,52 +28,129 @@ const Home: React.FC = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
 
-  // Handlers using blockchain context
+  // Handlers with optimistic updates
   const handleCreatePost = async (content: string) => {
+    if (!account) return;
+    
+    // Optimistic update: Add post immediately to UI
+    const optimisticPost: Post = {
+      id: Date.now(), // Temporary ID
+      author: account.address,
+      content,
+      likes: 0,
+      timestamp: Math.floor(Date.now() / 1000),
+      comments: [],
+    };
+    
+    setPosts(prev => [optimisticPost, ...prev]);
+    setIsCreateModalOpen(false);
+    setNewPostContent('');
+    
     try {
+      // Process blockchain transaction in background
       await blockchainCreatePost(content);
-      setIsCreateModalOpen(false);
-      setNewPostContent('');
-      // Reload posts after creating
+      // Reload posts to get correct data from blockchain
       await loadPosts();
     } catch (err) {
       console.error('Failed to create post:', err);
+      // Revert optimistic update on error
+      setPosts(prev => prev.filter(p => p.id !== optimisticPost.id));
     }
   };
 
   const handleAddComment = async (postId: number, content: string) => {
+    if (!account) return;
+    
+    // Optimistic update: Add comment immediately
+    const optimisticComment = {
+      id: Date.now(),
+      postId,
+      author: account.address,
+      content,
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+    
+    setPosts(prev => prev.map(post => 
+      post.id === postId 
+        ? { ...post, comments: [...(post.comments || []), optimisticComment] }
+        : post
+    ));
+    
+    if (selectedPost?.id === postId) {
+      setSelectedPost(prev => prev ? {
+        ...prev,
+        comments: [...(prev.comments || []), optimisticComment]
+      } : null);
+    }
+    
+    setNewCommentContent('');
+    
     try {
+      // Process blockchain transaction in background
       await blockchainAddComment(postId, content);
-      setNewCommentContent('');
-      // Reload posts after commenting
-      await loadPosts();
-      
-      // Update selected post if modal is open
+      // Reload posts to sync with blockchain
       const updatedPosts = await getAllPosts();
+      setPosts(updatedPosts);
+      
       const updatedPost = updatedPosts.find((p: Post) => p.id === postId);
       if (updatedPost && selectedPost?.id === postId) {
         setSelectedPost(updatedPost);
       }
     } catch (err) {
       console.error('Failed to add comment:', err);
+      // Revert optimistic update on error
+      setPosts(prev => prev.map(post => 
+        post.id === postId 
+          ? { ...post, comments: post.comments?.filter(c => c.id !== optimisticComment.id) }
+          : post
+      ));
     }
   };
 
   const handleToggleLike = async (postId: number) => {
+    if (!account) return;
+    
+    // Optimistic update: Toggle like immediately
+    setPosts(prev => prev.map(post => 
+      post.id === postId 
+        ? { ...post, likes: post.likes + 1 } // Simplified - just increment
+        : post
+    ));
+    
     try {
+      // Process blockchain transaction in background
       await blockchainToggleLike(postId);
-      // Reload posts after toggling like
+      // Reload posts to get accurate like count
       await loadPosts();
     } catch (err) {
       console.error('Failed to toggle like:', err);
+      // Revert on error
+      setPosts(prev => prev.map(post => 
+        post.id === postId 
+          ? { ...post, likes: Math.max(0, post.likes - 1) }
+          : post
+      ));
     }
   };
 
   const loadPosts = async () => {
+    // Load from cache immediately for instant display
+    const cachedPosts = localStorage.getItem('anonboard_posts');
+    if (cachedPosts) {
+      try {
+        const parsed = JSON.parse(cachedPosts);
+        setPosts(parsed);
+      } catch (e) {
+        console.error('Failed to parse cached posts:', e);
+      }
+    }
+    
     setIsLoadingPosts(true);
     try {
       const fetchedPosts = await getAllPosts();
       setPosts(fetchedPosts);
+      // Cache posts for next visit
+      localStorage.setItem('anonboard_posts', JSON.stringify(fetchedPosts));
     } catch (err) {
       console.error('Failed to load posts:', err);
     } finally {
@@ -88,9 +165,34 @@ const Home: React.FC = () => {
       setDarkMode(true);
     }
     
-    // Load posts on mount
-    loadPosts();
+    // Load cached posts on mount for instant display
+    const cachedPosts = localStorage.getItem('anonboard_posts');
+    if (cachedPosts) {
+      try {
+        setPosts(JSON.parse(cachedPosts));
+      } catch (e) {
+        console.error('Failed to parse cached posts:', e);
+      }
+    }
   }, []);
+
+  // Load posts when account connects
+  useEffect(() => {
+    if (account) {
+      loadPosts();
+    }
+  }, [account]);
+
+  // Reload posts periodically to catch new posts/comments (reduced frequency)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (account) {
+        loadPosts();
+      }
+    }, 30000); // Refresh every 30 seconds instead of 10
+    
+    return () => clearInterval(interval);
+  }, [account]);
 
   useEffect(() => {
     if (darkMode) {

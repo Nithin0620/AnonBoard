@@ -213,17 +213,35 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
   };
   
   const getAllPosts = async (): Promise<Post[]> => {
-    if (!contract || !totalPosts) return [];
+    if (!contract) return [];
+    
     try {
-      const total = Number(totalPosts);
+      // Fetch the current total posts count directly
+      const currentTotal = await readContract({
+        contract,
+        method: 'function getTotalPosts() view returns (uint256)',
+        params: [],
+      });
+      
+      const total = Number(currentTotal);
+      if (total === 0) return [];
+      
       const postPromises = [];
-      for (let i = 1; i <= total; i++) {
+      for (let i = 0; i < total; i++) {
         postPromises.push(getPost(i));
       }
       const results = await Promise.all(postPromises);
-      return results
-        .filter((post): post is Post => post !== null)
-        .sort((a, b) => b.timestamp - a.timestamp);
+      const validPosts = results.filter((post): post is Post => post !== null);
+      
+      // Fetch comments for each post
+      const postsWithComments = await Promise.all(
+        validPosts.map(async (post) => {
+          const comments = await getComments(post.id);
+          return { ...post, comments };
+        })
+      );
+      
+      return postsWithComments.sort((a, b) => b.timestamp - a.timestamp);
     } catch (err) {
       console.error('Error fetching all posts:', err);
       return [];
@@ -233,19 +251,18 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
   const getComments = async (postId: number): Promise<Comment[]> => {
     if (!contract) return [];
     try {
-      // @ts-ignore - Thirdweb type inference issue with complex tuple returns
       const commentsData = await readContract({
         contract,
-        method: 'function getComments(uint256 _postId) view returns (tuple(uint256 id, uint256 postId, address author, string content, uint256 timestamp)[])',
+        method: 'function getComments(uint256) view returns ((uint256,uint256,address,string,uint256)[])',
         params: [BigInt(postId)],
       });
       
       return (commentsData as any[]).map((comment: any) => ({
-        id: Number(comment.id),
-        postId: Number(comment.postId),
-        author: comment.author as string,
-        content: comment.content as string,
-        timestamp: Number(comment.timestamp),
+        id: Number(comment[0]),
+        postId: Number(comment[1]),
+        author: comment[2] as string,
+        content: comment[3] as string,
+        timestamp: Number(comment[4]),
       }));
     } catch (err) {
       console.error(`Error fetching comments for post ${postId}:`, err);
