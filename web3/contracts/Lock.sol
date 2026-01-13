@@ -128,3 +128,4 @@ contract AnonBoard {
         return nextPostId;
     }
 }
+
