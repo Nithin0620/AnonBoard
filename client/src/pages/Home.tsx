@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Send } from 'lucide-react';
 import { useActiveAccount } from 'thirdweb/react';
 import Navbar from '../components/Navbar';
@@ -8,7 +8,7 @@ import CommentCard from '../components/CommentCard';
 import { useBlockchain } from '../context/BlockchainContext' ;
 import { Post } from '../types';
 
-const Home: React.FC = () => {
+const Home = () => {
   const account = useActiveAccount();
   const { 
     createPost: blockchainCreatePost,
@@ -32,7 +32,7 @@ const Home: React.FC = () => {
   const handleCreatePost = async (content: string) => {
     if (!account) return;
     
-    // Optimistic update: Add post immediately to UI
+    // Optimistic update: Add post immediately to UI (but don't cache yet)
     const optimisticPost: Post = {
       id: Date.now(), // Temporary ID
       author: account.address,
@@ -44,30 +44,29 @@ const Home: React.FC = () => {
     
     const updatedPosts = [optimisticPost, ...posts];
     setPosts(updatedPosts);
-    // Update cache immediately for persistence
-    localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
+    // Show UI update immediately but DON'T cache until transaction succeeds
     
     setIsCreateModalOpen(false);
     setNewPostContent('');
     
     try {
-      // Process blockchain transaction in background
+      // Wait for blockchain transaction to complete
       await blockchainCreatePost(content);
-      // Reload posts after a delay to get correct data from blockchain
-      setTimeout(() => loadPosts(), 2000);
+      // Only cache AFTER transaction succeeds
+      localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
     } catch (err) {
       console.error('Failed to create post:', err);
-      // Revert optimistic update on error
+      // Revert optimistic update on error - transaction failed
       const revertedPosts = posts.filter(p => p.id !== optimisticPost.id);
       setPosts(revertedPosts);
-      localStorage.setItem('anonboard_posts', JSON.stringify(revertedPosts));
+      // Don't cache failed transactions
     }
   };
 
   const handleAddComment = async (postId: number, content: string) => {
     if (!account) return;
     
-    // Optimistic update: Add comment immediately
+    // Optimistic update: Add comment immediately (but don't cache yet)
     const optimisticComment = {
       id: Date.now(),
       postId,
@@ -82,8 +81,7 @@ const Home: React.FC = () => {
         : post
     );
     setPosts(updatedPosts);
-    // Update cache immediately
-    localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
+    // Show UI update immediately but DON'T cache until transaction succeeds
     
     if (selectedPost?.id === postId) {
       const updatedSelectedPost = {
@@ -96,57 +94,50 @@ const Home: React.FC = () => {
     setNewCommentContent('');
     
     try {
-      // Process blockchain transaction in background
+      // Wait for blockchain transaction to complete
       await blockchainAddComment(postId, content);
-      // Reload posts after a delay to sync with blockchain
-      setTimeout(async () => {
-        const freshPosts = await loadPosts();
-        const updatedPost = freshPosts.find((p: Post) => p.id === postId);
-        if (updatedPost && selectedPost?.id === postId) {
-          setSelectedPost(updatedPost);
-        }
-      }, 2000);
+      // Only cache AFTER transaction succeeds
+      localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
     } catch (err) {
       console.error('Failed to add comment:', err);
-      // Revert optimistic update on error
+      // Revert optimistic update on error - transaction failed
       const revertedPosts = posts.map(post => 
         post.id === postId 
           ? { ...post, comments: post.comments?.filter(c => c.id !== optimisticComment.id) }
           : post
       );
       setPosts(revertedPosts);
-      localStorage.setItem('anonboard_posts', JSON.stringify(revertedPosts));
+      // Don't cache failed transactions
     }
   };
 
   const handleToggleLike = async (postId: number) => {
     if (!account) return;
     
-    // Optimistic update: Toggle like immediately
+    // Optimistic update: Toggle like immediately (but don't cache yet)
     const updatedPosts = posts.map(post => 
       post.id === postId 
         ? { ...post, likes: post.likes + 1 } // Simplified - just increment
         : post
     );
     setPosts(updatedPosts);
-    // Update cache immediately
-    localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
+    // Show UI update immediately but DON'T cache until transaction succeeds
     
     try {
-      // Process blockchain transaction in background
+      // Wait for blockchain transaction to complete
       await blockchainToggleLike(postId);
-      // Reload posts after a delay to get accurate like count
-      setTimeout(() => loadPosts(), 2000);
+      // Only cache AFTER transaction succeeds
+      localStorage.setItem('anonboard_posts', JSON.stringify(updatedPosts));
     } catch (err) {
       console.error('Failed to toggle like:', err);
-      // Revert on error
+      // Revert on error - transaction failed
       const revertedPosts = posts.map(post => 
         post.id === postId 
           ? { ...post, likes: Math.max(0, post.likes - 1) }
           : post
       );
       setPosts(revertedPosts);
-      localStorage.setItem('anonboard_posts', JSON.stringify(revertedPosts));
+      // Don't cache failed transactions
     }
   };
 
@@ -189,17 +180,6 @@ const Home: React.FC = () => {
     if (account) {
       loadPosts();
     }
-  }, [account]);
-
-  // Reload posts periodically to catch new posts/comments (reduced frequency)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (account) {
-        loadPosts();
-      }
-    }, 30000); // Refresh every 30 seconds instead of 10
-    
-    return () => clearInterval(interval);
   }, [account]);
 
   useEffect(() => {

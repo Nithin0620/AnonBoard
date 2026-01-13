@@ -1,4 +1,3 @@
-import React from 'react';
 import { Post } from '../types';
 import { MessageSquare, User } from 'lucide-react';
 import LikeButton from './LikeButton';
@@ -9,7 +8,7 @@ interface PostCardProps {
   onViewComments: (post: Post) => void;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post, onLike, onViewComments }) => {
+const PostCard = ({ post, onLike, onViewComments }: PostCardProps) => {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow">
       <div className="flex items-center gap-3 mb-4">

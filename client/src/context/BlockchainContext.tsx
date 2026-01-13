@@ -77,53 +77,53 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
   const account = useActiveAccount();
   const accountAddress = account?.address || null;
   const [error, setError] = useState<string | null>(null);
-  
-  const { 
-    mutateAsync: sendTransaction, 
+
+  const {
+    mutateAsync: sendTransaction,
     isPending: isTransactionPending,
-    error: transactionError 
+    error: transactionError
   } = useSendTransaction();
-  
+
   // Read total posts
-  const { 
-    data: totalPosts, 
+  const {
+    data: totalPosts,
     isLoading: isLoadingTotalPosts,
-    refetch: refetchTotalPosts 
+    refetch: refetchTotalPosts
   } = useReadContract({
     contract: contract as ThirdwebContract,
     method: 'function getTotalPosts() view returns (uint256)',
     params: [],
   });
-  
+
   // Read next post ID
-  const { 
+  const {
     data: nextPostId,
-    refetch: refetchNextPostId 
+    refetch: refetchNextPostId
   } = useReadContract({
     contract: contract as ThirdwebContract,
     method: 'function nextPostId() view returns (uint256)',
     params: [],
   });
-  
+
   // Read next comment ID
-  const { 
+  const {
     data: nextCommentId,
-    refetch: refetchNextCommentId 
+    refetch: refetchNextCommentId
   } = useReadContract({
     contract: contract as ThirdwebContract,
     method: 'function nextCommentId() view returns (uint256)',
     params: [],
   });
-  
+
   // ============================================================================
   // WRITE FUNCTIONS
   // ============================================================================
-  
+
   const createPost = async (content: string): Promise<void> => {
     if (!contract) throw new Error('Contract not initialized');
     if (!accountAddress) throw new Error('Wallet not connected');
     if (!content.trim()) throw new Error('Post content cannot be empty');
-    
+
     try {
       setError(null);
       const transaction = prepareContractCall({
@@ -143,11 +143,11 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
       throw err;
     }
   };
-  
+
   const toggleLike = async (postId: number): Promise<void> => {
     if (!contract) throw new Error('Contract not initialized');
     if (!accountAddress) throw new Error('Wallet not connected');
-    
+
     try {
       setError(null);
       const transaction = prepareContractCall({
@@ -164,12 +164,12 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
       throw err;
     }
   };
-  
+
   const addComment = async (postId: number, content: string): Promise<void> => {
     if (!contract) throw new Error('Contract not initialized');
     if (!accountAddress) throw new Error('Wallet not connected');
     if (!content.trim()) throw new Error('Comment content cannot be empty');
-    
+
     try {
       setError(null);
       const transaction = prepareContractCall({
@@ -186,11 +186,11 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
       throw err;
     }
   };
-  
+
   // ============================================================================
   // READ FUNCTIONS
   // ============================================================================
-  
+
   const getPost = async (postId: number): Promise<Post | null> => {
     if (!contract) return null;
     try {
@@ -211,10 +211,10 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
       return null;
     }
   };
-  
+
   const getAllPosts = async (): Promise<Post[]> => {
     if (!contract) return [];
-    
+
     try {
       // Fetch the current total posts count directly
       const currentTotal = await readContract({
@@ -222,17 +222,17 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
         method: 'function getTotalPosts() view returns (uint256)',
         params: [],
       });
-      
+
       const total = Number(currentTotal);
       if (total === 0) return [];
-      
+
       const postPromises = [];
       for (let i = 0; i < total; i++) {
         postPromises.push(getPost(i));
       }
       const results = await Promise.all(postPromises);
       const validPosts = results.filter((post): post is Post => post !== null);
-      
+
       // Fetch comments for each post
       const postsWithComments = await Promise.all(
         validPosts.map(async (post) => {
@@ -240,14 +240,14 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
           return { ...post, comments };
         })
       );
-      
+
       return postsWithComments.sort((a, b) => b.timestamp - a.timestamp);
     } catch (err) {
       console.error('Error fetching all posts:', err);
       return [];
     }
   };
-  
+
   const getComments = async (postId: number): Promise<Comment[]> => {
     if (!contract) return [];
     try {
@@ -256,7 +256,7 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
         method: 'function getComments(uint256) view returns ((uint256,uint256,address,string,uint256)[])',
         params: [BigInt(postId)],
       });
-      
+
       return (commentsData as any[]).map((comment: any) => ({
         id: Number(comment[0]),
         postId: Number(comment[1]),
@@ -269,7 +269,7 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
       return [];
     }
   };
-  
+
   const hasLiked = async (postId: number, userAddress?: string): Promise<boolean> => {
     if (!contract) return false;
     const addressToCheck = userAddress || accountAddress;
@@ -286,29 +286,29 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
       return false;
     }
   };
-  
+
   // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
-  
+
   const refetchData = () => {
     refetchTotalPosts();
     refetchNextPostId();
     refetchNextCommentId();
   };
-  
+
   const clearError = () => setError(null);
-  
+
   useEffect(() => {
     if (transactionError) {
       setError(transactionError.message || 'Transaction failed');
     }
   }, [transactionError]);
-  
+
   // ============================================================================
   // CONTEXT VALUE
   // ============================================================================
-  
+
   const value: BlockchainContextType = {
     contract,
     account: accountAddress,
@@ -329,7 +329,7 @@ export const BlockchainProvider: React.FC<BlockchainProviderProps> = ({ children
     refetchData,
     clearError,
   };
-  
+
   return (
     <BlockchainContext.Provider value={value}>
       {children}

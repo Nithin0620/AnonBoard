@@ -1,4 +1,3 @@
-import React from 'react';
 import { Heart } from 'lucide-react';
 
 interface LikeButtonProps {
@@ -7,7 +6,7 @@ interface LikeButtonProps {
   onToggle: () => void;
 }
 
-const LikeButton: React.FC<LikeButtonProps> = ({ likes, isLiked, onToggle }) => {
+const LikeButton = ({ likes, isLiked, onToggle }: LikeButtonProps) => {
   return (
     <button
       onClick={(e) => {
